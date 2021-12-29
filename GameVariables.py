@@ -14,6 +14,7 @@ class MineField:
         self.mine_squares = []              # List of coordinates of all squares with mines
         self.flag_squares = []              # List of coordinates of all squares with flags
 
+        self.num_committed_mines = 0        # Tracks number of successfully committed mines
         self.num_revealed = 0               # Number of tiles successfully revealed
         self.exploded = False
 
@@ -24,11 +25,12 @@ class MineField:
                 self.field[x].append(FieldSquare(self, x, y))
 
     def reset(self):
-        # Resets grid, spawns new mines
-        num_mines = len(self.mine_squares)
+        # Resets grid, spawns new mines based on # mines in current minefield state
+        num_mines = len(self.mine_squares) + self.num_committed_mines
 
         # Reset game-status parameters
         self.num_revealed = 0
+        self.num_committed_mines = 0
         self.exploded = False
 
         # Manually re-establish (without recreating) each field square
@@ -124,6 +126,30 @@ class MineField:
             if not current_flag.has_mine:
                 current_flag.is_revealed = True
 
+    def commit_mines(self):
+        # A unique functionality for my implementation of minesweeper
+        # Removes all successfully flagged mines from map & adjusts neighbor counts
+        # Explodes if a non-mined tile is flagged
+
+        # First, check if any flags are non-mined (we don't want to remove any mines until we know this)
+        squares_to_commit = []
+        for flag_x, flag_y in self.flag_squares:
+            flag_square = self.get_square(flag_x, flag_y)
+            assert isinstance(flag_square, FieldSquare)
+
+            # Debugging, everything in flag_squares SHOULD have a flag
+            assert flag_square.has_flag
+
+            if not flag_square.has_mine:
+                self.exploded = True
+                self.reveal_mines()
+                return
+            else:
+                squares_to_commit.append(flag_square)
+
+        for square in squares_to_commit:
+            square.remove_mine()
+
     def dig_square(self, x_pos, y_pos):
         # Method to manually reveal a mine via MineField
         # (usually only used during debugging - during game, mines are revealed
@@ -140,7 +166,7 @@ class MineField:
         if self.exploded:
             return -1
         elif self.num_revealed >= (self.size[0] * self.size[1] - len(self.mine_squares)):
-            # If # mines revealed >= number of safe tiles
+            # If num tiles revealed >= number of safe tiles
             return 1
         else:
             return 0
@@ -175,7 +201,9 @@ class FieldSquare:
         self.field = containing_field  # Reference to minefield this square is a part of
         self.pos = (pos_x, pos_y)
         self.neighboring_mines = 0  # Number of mines adjacent to this square
+
         self.has_mine = False  # Boolean flag indicating there is a mine in this field
+        self.mine_removed = False  # Indicates if a mine previously here has been removed
         self.has_flag = False  # Indicates if a flag has been set. Flagged tiles can't be revealed
         self.is_revealed = False  # Indicates if tile has been looked into
         self.source_explosion = False # Indicates that this tile caused game-over
@@ -202,6 +230,41 @@ class FieldSquare:
         self.has_mine = True
         for square in self.all_neighbors():
             square.neighboring_mines += 1
+
+    def remove_mine(self, commit=True):
+        # Remove a mine from the field & adjust neighboring mine counts
+        # commit parameter indicates whether to display & store that a mine used to be there
+        # True: Stores mine_removed flag
+        #       Will be indicated visually on screen & not show number underneath
+        # False: No flag stored
+        #       Square should behave as if there was never a mine there at all
+        #       Removes mine without revealing square
+
+        # remove_mine() could/should only be called when tile is flagged & mined
+        assert (self.has_flag and self.has_mine)
+        self.has_flag = False
+        self.has_mine = False
+        self.mine_removed = commit
+
+        for n in self.all_neighbors():
+            n.neighboring_mines -= 1
+
+        self.field.mine_squares.remove(self.pos)
+        self.field.flag_squares.remove(self.pos)
+
+        if commit:
+            self.dig()
+            self.field.num_committed_mines += 1
+
+            for n in self.all_neighbors():
+                # For each revealed 1 that became a 0,
+                # un-reveal and re-dig to trigger 0-square auto-revealing for other squares
+
+                if n.is_revealed and n.neighboring_mines == 0 and not n.mine_removed:
+                    self.field.num_revealed -= 1
+                    n.is_revealed = False
+                    n.dig()
+
 
     def toggle_flag(self):
         if not self.is_revealed:
@@ -230,13 +293,14 @@ class FieldSquare:
                 self.field.reveal_mines()
             elif self.neighboring_mines == 0:
                 # If no neighboring mines, pread the dig around to anything with 0
+                # Exclude mine-removed tiles from auto-fill logic
                 to_dig = [self]
                 while len(to_dig) > 0:
                     for n in to_dig.pop(0).all_neighbors():
                         # Check each neighbor for clickability
-                        if not n.has_flag and not n.is_revealed:
-                            # Reveal each neighbor
-                            # and update parent field's revealed count
+                        if not n.has_flag and not n.is_revealed and not n.mine_removed:
+                            # Reveal each neighbor and update parent field's revealed count
+                            # Exclude mine-removed tiles from reveal logic
                             n.is_revealed = True
                             self.field.num_revealed += 1
                             if n.neighboring_mines == 0:

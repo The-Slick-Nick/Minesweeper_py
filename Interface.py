@@ -174,6 +174,8 @@ class MineSweeperFace(ImageInteractable):
             if not self.new_pressed[0] and self.old_pressed[0]:
                 # Logic only on button release
                 self.leftclick()
+            elif not self.new_pressed[2] and self.old_pressed[2]:
+                self.rightclick()
 
     def get_image(self):
         # Change expression on face based on game status
@@ -222,7 +224,11 @@ class MineSweeperSquare(ImageInteractable):
     def get_image(self):
         # Determine tile category (based on object flags)
         # and reference the given image
-        if self.field_tile.is_revealed:
+        assert isinstance(self.field_tile, FieldSquare)
+        if self.field_tile.mine_removed:
+            # REPLACE WITH "mineRemoved" ONCE THAT IMAGE IS UPLOADED
+            image_key = "mineFalse"
+        elif self.field_tile.is_revealed:
             if self.field_tile.has_mine:
                 # All below are only visible on game over (revealed mine)
                 if self.field_tile.source_explosion:

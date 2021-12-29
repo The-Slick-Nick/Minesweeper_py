@@ -307,7 +307,7 @@ class GameInstance:
         base_size = 500
         if self.game_settings['row_count'] >= self.game_settings['column_count']:
             screen_height = base_size
-            box_size = (base_size / self.game_settings['row_count'])
+            box_size = int(base_size / self.game_settings['row_count'])
             screen_width = box_size * self.game_settings['column_count']
         else:
             screen_width = base_size
@@ -340,7 +340,7 @@ class GameInstance:
                 pos_x=(screen_width / 2) - (face_size / 2),         # Center in menu bar
                 pos_y=(menu_bar_height / 2) - (face_size / 2),      # Center in menu bar
                 width=face_size, height=face_size,
-                leftclick=reset_mines,
+                leftclick=reset_mines, rightclick=mine_field.commit_mines,
                 object_link=mine_field,
                 sprite_list=self.face_sprites
             )
@@ -439,6 +439,7 @@ class GameInstance:
                 pygame.display.flip()
 
                 tick_count += 1
+
 
             # Once game loop ends, do GAMEOVER loop
             while self.screen_control['GAME']:
