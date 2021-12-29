@@ -4,8 +4,6 @@ from GameInstance import *
 import math
 pygame.init()
 
-image_log = {}
-
 # Display & interacion elements
 # Used as a mediator between game objects & the player
 
