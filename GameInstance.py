@@ -65,6 +65,7 @@ class GameInstance:
             ] = pygame.image.load(os.path.join("Resources", "Sprites", "Digits", image_name))
 
     def exit_screen(self, screen_type):
+        # Marks a described loop control flag as False (to end that loop)
         self.screen_control[screen_type] = False
 
     def adjust_settings(self, setting_type, adjust_amount):
