@@ -27,10 +27,6 @@ class GameInstance:
             'column_count': 10       # Minimum 4    Maximum: 100
         }
 
-        self.last_pressed = (False, False, False)
-        self.current_pressed = (False, False, False)
-        self.new_pressed = (False, False, False)
-
         self.menu_elements = {}     # images for drawing menu elements
         self.face_sprites = {}      # sprites of the minesweeper dude's faces
         self.grid_sprites = {}      # sprite of grid tile icons
@@ -153,10 +149,6 @@ class GameInstance:
         self.screen_control['STARTMENU'] = True
         while self.screen_control['STARTMENU']:
             ### RESOLVE USER INPUT ###
-
-            # Use mouse button status to determine what's pressed
-            # (Extra logic here to ignore held-down mouse)
-            # self.resolve_mousebuttons()
 
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT or ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
@@ -284,8 +276,7 @@ class GameInstance:
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     pygame.quit()
-
-            #self.resolve_mousebuttons()
+                    
             for cb in config_buttons:
                 cb.store_inputs(pygame.mouse.get_pos(), pygame.mouse.get_pressed(3))
 
@@ -433,7 +424,7 @@ class GameInstance:
                     game_screen.fill((192, 192, 192))
                     pygame.display.set_caption("Minesweeper")
                     game_screen.blit(pygame.transform.scale(
-                        self.menu_elements['MENU_BAR'],(screen_width, menu_bar_height)),
+                        self.menu_elements['MENU_BAR'], (screen_width, menu_bar_height)),
                         (0, 0)
                     )
 
@@ -452,7 +443,6 @@ class GameInstance:
             while self.screen_control['GAME']:
                 self.clock.tick()
                 ### RESOLVE USER INPUT ###
-                #self.resolve_mousebuttons()
 
                 for ev in pygame.event.get():
                     if ev.type == pygame.QUIT:
@@ -463,7 +453,7 @@ class GameInstance:
                         if ev.key == pygame.K_ESCAPE:
                             exit_all()
                         elif ev.key == pygame.K_r:
-                        # R resets game
+                            # R resets game
                             reset_mines()
 
                 for mb in menu_buttons:
