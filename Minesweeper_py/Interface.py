@@ -227,7 +227,7 @@ class MineSweeperSquare(ImageInteractable):
         assert isinstance(self.field_tile, FieldSquare)
         if self.field_tile.mine_removed:
             # REPLACE WITH "mineRemoved" ONCE THAT IMAGE IS UPLOADED
-            image_key = "mineFalse"
+            image_key = "mineRemoved"
         elif self.field_tile.is_revealed:
             if self.field_tile.has_mine:
                 # All below are only visible on game over (revealed mine)
