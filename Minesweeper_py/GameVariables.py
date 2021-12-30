@@ -11,8 +11,8 @@ class MineField:
             height = width
         self.size = (width, height)
         self.field = []                     # Container for all FieldSquares (list of lists)
-        self.mine_squares = []              # List of coordinates of all squares with mines
-        self.flag_squares = []              # List of coordinates of all squares with flags
+        self.mine_squares = set()           # Set of coordinates of all squares with mines
+        self.flag_squares = set()           # Set of coordinates of all squares with flags
 
         self.num_committed_mines = 0        # Tracks number of successfully committed mines
         self.num_revealed = 0               # Number of tiles successfully revealed
@@ -22,50 +22,53 @@ class MineField:
         for x in range(width):
             self.field.append([])
             for y in range(height):
-                self.field[x].append(FieldSquare(self, x, y))
+                self.field[x].append(FieldSquare(x, y))
 
-    def reset(self):
+    def reset(self, num_mines=-1):
         # Resets grid, spawns new mines based on # mines in current minefield state
-        num_mines = len(self.mine_squares) + self.num_committed_mines
+        if num_mines < 1:
+            num_mines = len(self.mine_squares) + self.num_committed_mines
 
-        # Reset game-status parameters
-        self.num_revealed = 0
-        self.num_committed_mines = 0
-        self.exploded = False
-
-        # Manually re-establish (without recreating) each field square
-        # This is done to not have to re-establish linked buttons
-        width, height = self.size
-        for x in range(width):
-            for y in range(height):
-                self.get_square(x, y).__init__(self, x, y)
-
-        # Repopulate mines and reset position tracking
-        self.mine_squares = []
-        self.flag_squares = []
+        self.__init__(self.size[0], self.size[1])
         self.populate_mines(num_mines)
+
+    def out_of_bounds(self, pos_x, pos_y):
+        return not (0 <= pos_x < self.size[0] and 0 <= pos_y < self.size[1])
 
     def get_square(self, pos_x, pos_y):
         # Return FieldSquare at position described
-        if not 0 <= pos_x < self.size[0] or not 0 <= pos_y < self.size[1]:
+        if self.out_of_bounds(pos_x, pos_y):
             return None
         else:
             return self.field[pos_x][pos_y]
 
-    def set_mine(self, pos_x, pos_y):
-        # Method to manually set a mine at the desired position
-        field_to_set = self.get_square(pos_x, pos_y)
-        if field_to_set is not None:
-            if not field_to_set.has_mine and self.safe_tiles > 1:
-                field_to_set.set_mine()
-                self.safe_tiles -= 1
+    def set_mine(self, pos_x=-1, pos_y=-1, by_square=None):
+        # Attempts to set a mine at the target coordinates, and returns
+        # a boolean indicating if it was successful
+        if by_square is not None:
+            pos_x, pos_y = by_square.pos
+
+        to_return = False
+        if not self.out_of_bounds(pos_x, pos_y):
+            square_to_set = self.get_square(pos_x, pos_y)
+            assert isinstance(square_to_set, FieldSquare)
+            if square_to_set.is_clickable() and not square_to_set.has_mine:
+                to_return = True
+                self.mine_squares.add((pos_x, pos_y))
+                square_to_set.set_mine()
+
+                # Increment nearby-mine counter for all neighbors
+                for neighbor in self.all_neighbors(pos_x, pos_y):
+                    assert isinstance(neighbor, FieldSquare)
+                    neighbor.neighboring_mines += 1
+        return to_return
 
     def populate_mines(self, num_mines=1):
-        # Number of mines to auto-populate can be from 0 to 1 less than # of safe tiles
-        # (there must be at least one mine to populate)
+
+        # 1 <= num_mines < safe_tiles
         num_mines = min(
             max(num_mines, 1),
-            self.size[0] * self.size[1] - 1
+            self.num_safe_tiles() - 1
         )
 
         # Need to loop through each mine # to populate
@@ -76,12 +79,155 @@ class MineField:
             while not location_found:
                 x_to_mine = randint(0, self.size[0] - 1)
                 y_to_mine = randint(0, self.size[1] - 1)
-                tile_to_mine = self.get_square(x_to_mine, y_to_mine)
-                location_found = not tile_to_mine.has_mine
 
-            tile_to_mine.set_mine()
-            # Remember coordinates of all generated mines to show mines on game loss
-            self.mine_squares.append((x_to_mine, y_to_mine))
+                # Sets mine and exits while if successful
+                # Does thing and continues while loop if this fails
+                location_found = self.set_mine(x_to_mine, y_to_mine)
+
+    def reveal_mines(self):
+        # Force-reveals any mine tiles.
+        # Typically only called once a user reveals a mine and loses the game
+        for mine_pos in self.mine_squares:
+            current_mine = self.get_square(mine_pos[0], mine_pos[1])
+            # Force remove has_flag flag (even if it was already false)
+            current_mine.has_flag = False
+            # Force-add the is_revealed flag
+            current_mine.is_revealed = True
+
+        for flag_pos in self.flag_squares:
+            # Force-reveal flagged non-mine tiles to display X'ed mines on gameover
+            if flag_pos not in self.mine_squares:
+                self.get_square(flag_pos[0], flag_pos[1]).is_revealed = True
+
+    def commit_mines(self):
+        # A unique functionality for my implementation of minesweeper
+        # Removes all successfully flagged mines from map & adjusts neighbor counts
+        # Explodes if a non-mined tile is flagged
+
+        # First, check if any flags are non-mined (we don't want to remove any mines until we know this)
+        to_commit = set()
+        for flag_pos in self.flag_squares:
+            if flag_pos not in self.mine_squares:
+                self.exploded = True
+                self.reveal_mines()
+                return
+            else:
+                # Commit flag squares that have a mine
+                to_commit.add(self.get_square(flag_pos[0], flag_pos[1]))
+        self.remove_mine(by_square=to_commit, commit=True)
+
+    def remove_mine(self, x_pos=-1, y_pos=-1, by_square=None, commit=True):
+        if by_square is None:
+            square_to_remove = {self.get_square(x_pos, y_pos)}
+        else:
+            try:
+                square_to_remove = set(by_square)
+            except TypeError:
+                square_to_remove = {by_square}
+
+        new_blanks = set()
+        for square in square_to_remove:
+
+            if square.remove_mine(commit):
+                # Only run removal logic if a mine was actually removed
+                if commit:
+                    self.num_committed_mines += 1
+                    if square.has_flag:
+                        # We only need to remove flag (& flagged tile from flag list) if committing
+                        self.toggle_flag(by_square=square)
+
+                self.mine_squares.remove(square.pos)
+                for neighbor in self.all_neighbors(by_square=square):
+                    assert isinstance(neighbor, FieldSquare)
+                    neighbor.neighboring_mines -= 1
+                    if neighbor.is_revealed:
+                        # Any square already revealed must now be re-evaluated for blank filling
+                        new_blanks.add(neighbor)
+
+        self.spread_blanks(by_square=new_blanks)
+
+    def dig(self, x_pos=-1, y_pos=-1, by_square=None):
+        if by_square is not None:
+            square_to_dig = by_square
+        else:
+            square_to_dig = self.get_square(x_pos, y_pos)
+
+        if square_to_dig is not None and square_to_dig.is_clickable():
+            square_to_dig.dig()
+            self.num_revealed += 1
+            if square_to_dig.has_mine:
+                self.exploded = True
+                self.reveal_mines()
+            else:
+                self.spread_blanks(by_square=square_to_dig)
+
+    def spread_blanks(self, x_pos=-1, y_pos=-1, by_square=None):
+        # Continually reveals neighboring squares so long as the square to consider has 0 neighboring mines
+        if by_square is None:
+            to_consider = {self.get_square(x_pos, y_pos)}
+        else:
+            try:
+                to_consider = set(by_square)
+            except TypeError:
+                to_consider = {by_square}
+
+        st = time.time()
+        # Keep a running set of tiles to consider
+        # Keep removing them & considering new ones them until the set is empty
+        while len(to_consider) > 0:
+            # Consider & remove an item in the set
+            current_square = to_consider.pop()
+            if current_square.neighboring_mines == 0:
+                # add new squares to consider only if the current one is not next to any mines
+                for neighbor in self.all_neighbors(by_square=current_square):
+                    if neighbor.is_clickable():
+                        neighbor.dig()
+                        self.num_revealed += 1
+                        to_consider.add(neighbor)
+        print("blank spreading time: {}".format(time.time() - st))
+
+    def toggle_flag(self, x_pos=-1, y_pos=-1, by_square=None):
+        if by_square is not None:
+            square_to_toggle = by_square
+        else:
+            square_to_toggle = self.get_square(x_pos, y_pos)
+
+        if square_to_toggle is not None and not square_to_toggle.is_revealed:
+            square_to_toggle.toggle_flag()
+            if square_to_toggle.has_flag:
+                self.flag_squares.add(square_to_toggle.pos)
+            else:
+                self.flag_squares.remove(square_to_toggle.pos)
+
+    def game_state(self):
+        # Integer codes indicating state of game
+        #   -1  Exploded
+        #    0  Still going
+        #    1  Game won
+        if self.exploded:
+            return -1
+        elif self.num_revealed + self.num_committed_mines >= self.num_safe_tiles():
+            # If num tiles revealed >= number of safe tiles
+            return 1
+        else:
+            return 0
+
+    def num_safe_tiles(self):
+        return self.size[0] * self.size[1] - len(self.mine_squares)
+
+    def all_neighbors(self, square_x=-1, square_y=-1, by_square=None):
+        if by_square is not None:
+            square_x, square_y = by_square.pos
+
+        to_return = []
+
+        for delta_x in range(-1, 2):
+            for delta_y in range(-1, 2):
+                if delta_x != 0 or delta_y != 0:
+                    neighbor_field = self.get_square(square_x + delta_x, square_y + delta_y)
+                    if neighbor_field is not None:
+                        to_return.append(neighbor_field)
+        return to_return
 
     def print_minefield(self, cushion=5):
         # Prints the status of each mine tile to console
@@ -112,82 +258,6 @@ class MineField:
         for str_to_print in print_list:
             print(str_to_print)
 
-    def reveal_mines(self):
-        # Force-reveals any mine tiles. (And any
-        # Only called once user reveals a mine and loses the game
-        for mine_pos in self.mine_squares:
-            current_mine = self.get_square(mine_pos[0], mine_pos[1])
-            current_mine.has_flag = False
-            current_mine.is_revealed = True
-
-        for flag_pos in self.flag_squares:
-            # Force-reveal flagged non-mine tiles to display X'ed mines on gameover
-            current_flag = self.get_square(flag_pos[0], flag_pos[1])
-            if not current_flag.has_mine:
-                current_flag.is_revealed = True
-
-    def commit_mines(self):
-        # A unique functionality for my implementation of minesweeper
-        # Removes all successfully flagged mines from map & adjusts neighbor counts
-        # Explodes if a non-mined tile is flagged
-
-        # First, check if any flags are non-mined (we don't want to remove any mines until we know this)
-        squares_to_commit = []
-        for flag_x, flag_y in self.flag_squares:
-            flag_square = self.get_square(flag_x, flag_y)
-            assert isinstance(flag_square, FieldSquare)
-
-            # Debugging, everything in flag_squares SHOULD have a flag
-            assert flag_square.has_flag
-
-            if not flag_square.has_mine:
-                self.exploded = True
-                self.reveal_mines()
-                return
-            else:
-                squares_to_commit.append(flag_square)
-
-        for square in squares_to_commit:
-            square.remove_mine()
-
-    def dig_square(self, x_pos, y_pos):
-        # Method to manually reveal a mine via MineField
-        # (usually only used during debugging - during game, mines are revealed
-        # on the FieldSquare side)
-
-        self.get_square(x_pos, y_pos).dig()
-        self.print_minefield()
-
-    def game_state(self):
-        # Integer codes indicating state of game
-        #   -1  Exploded
-        #    0  Still going
-        #    1  Game won
-        if self.exploded:
-            return -1
-        elif self.num_revealed >= (self.size[0] * self.size[1] - len(self.mine_squares)):
-            # If num tiles revealed >= number of safe tiles
-            return 1
-        else:
-            return 0
-
-    # get_color() and get_text() methods for object-linked buttons
-    def get_color(self):
-        if self.exploded:
-            return (255, 0, 0)
-        elif self.num_revealed >= self.safe_tiles:
-            return (0, 255, 0)
-        else:
-            return (100, 100, 100)
-
-    def get_text(self):
-        if self.exploded:
-            return "You Lost!"
-        elif self.num_revealed >= self.safe_tiles:
-            return "You Win"
-        else:
-            return "Game is still in progress."
-
 
 class FieldSquare:
     # Individual square in minefield
@@ -197,8 +267,7 @@ class FieldSquare:
     #   revealed
     #   exploded
     # Contains methods for digging (and auto-digging blanks around it)
-    def __init__(self, containing_field: MineField, pos_x, pos_y):
-        self.field = containing_field  # Reference to minefield this square is a part of
+    def __init__(self, pos_x, pos_y):
         self.pos = (pos_x, pos_y)
         self.neighboring_mines = 0  # Number of mines adjacent to this square
 
@@ -208,108 +277,37 @@ class FieldSquare:
         self.is_revealed = False  # Indicates if tile has been looked into
         self.source_explosion = False # Indicates that this tile caused game-over
 
-    def neighbor(self, dir_x, dir_y):
-        # Returns a reference to another FieldSquare in the dirction provides
-        return self.field.get_square(
-            dir_x + self.pos[0],
-            dir_y + self.pos[1]
-        )
-
-    def all_neighbors(self):
-        # Returns a list of all existing neighboring tiles (All squares one square away, including diagonals)
-        to_return = []
-        for delta_x in range(-1, 2):
-            for delta_y in range(-1, 2):
-                if delta_x != 0 or delta_y != 0:
-                    neighbor_field = self.neighbor(delta_x, delta_y)
-                    if neighbor_field is not None:
-                        to_return.append(neighbor_field)
-        return to_return
+    def is_clickable(self):
+        return not (self.is_revealed or self.has_flag or self.mine_removed)
 
     def set_mine(self):
         self.has_mine = True
-        for square in self.all_neighbors():
-            square.neighboring_mines += 1
 
     def remove_mine(self, commit=True):
-        # Remove a mine from the field & adjust neighboring mine counts
-        # commit parameter indicates whether to display & store that a mine used to be there
-        # True: Stores mine_removed flag
-        #       Will be indicated visually on screen & not show number underneath
-        # False: No flag stored
-        #       Square should behave as if there was never a mine there at all
-        #       Removes mine without revealing square
-
-        # remove_mine() could/should only be called when tile is flagged & mined
-        assert (self.has_flag and self.has_mine)
-        self.has_flag = False
-        self.has_mine = False
-        self.mine_removed = commit
-
-        for n in self.all_neighbors():
-            n.neighboring_mines -= 1
-
-        # Square removes itself from MineField lists storing its position (as a flag & mine)
-        self.field.mine_squares.remove(self.pos)
-        self.field.flag_squares.remove(self.pos)
-
-        if commit:
-            self.dig()
-            self.field.num_committed_mines += 1
-
-            for n in self.all_neighbors():
-                # For each revealed 1 that became a 0,
-                # un-reveal and re-dig to trigger 0-square auto-revealing for other squares
-
-                if n.is_revealed and n.neighboring_mines == 0 and not n.mine_removed:
-                    self.field.num_revealed -= 1
-                    n.is_revealed = False
-                    n.dig()
+        if self.has_mine:
+            self.has_mine = False
+            if commit:
+                self.mine_removed = True
+            return True
+        else:
+            # Return False if unsuccessful: (no mine there)
+            return False
 
     def toggle_flag(self):
-        if not self.is_revealed:
-            # Reverse "has_flag" flag       ( sorry for the naming confusion here)
-            self.has_flag = not self.has_flag
+        self.has_flag = not self.has_flag
 
-            # Adjust parent field's flag position storage
-            if self.has_flag:
-                self.field.flag_squares.append(self.pos)
-            elif not self.has_flag:
-                self.field.flag_squares.remove(self.pos)
-
-    def dig(self, outer=False):
-        # Digs on a square to reveal either a mine
-        # or a number (indicating # of nearby mines)
-        # Includes logic to auto-reveal chunks of 0-neighbor squares
-        if not self.has_flag and not self.is_revealed:
-            # Reveal if tile is interactable
-            # and update parent field's revealed count
-            self.is_revealed = True
-            self.field.num_revealed += 1
-            if self.has_mine:
-                # If mine, explode and pass game condition to field
-                self.source_explosion = True
-                self.field.exploded = True
-                self.field.reveal_mines()
-            elif self.neighboring_mines == 0:
-                # If no neighboring mines, spread the dig around to anything with 0
-                # Exclude mine-removed tiles from auto-fill logic
-                to_dig = [self]
-                while len(to_dig) > 0:
-                    for n in to_dig.pop(0).all_neighbors():
-                        # Check each neighbor for clickability
-                        if not n.has_flag and not n.is_revealed and not n.mine_removed:
-                            # Reveal each neighbor and update parent field's revealed count
-                            # Exclude mine-removed tiles from reveal logic
-                            n.is_revealed = True
-                            self.field.num_revealed += 1
-                            if n.neighboring_mines == 0:
-                                # If neighbor also 0 count, add to list to be considered
-                                to_dig.append(n)
+    def dig(self):
+        self.is_revealed = True
+        if self.has_mine:
+            self.source_explosion = True
 
     def get_display_text(self):
         # What text to display on printing minefield
-        if self.has_mine:
+        if self.mine_removed:
+            to_return = "C"
+        elif self.has_flag:
+            to_return = "F"
+        elif self.has_mine:
             to_return = "M"
         else:
             to_return = str(self.neighboring_mines)

@@ -1,7 +1,10 @@
 from Interface import *
 from GameVariables import *
 from math import ceil
-import pygame, os, sys
+import os
+import sys
+import time, pandas
+import pygame
 pygame.init()
 
 
@@ -299,6 +302,8 @@ class GameInstance:
         pygame.display.init()
 
     def run_game(self):
+        # Potential new screen size for game: close and reopen
+        # (Things appear off-center sometimes if we don't do this, idk)
         pygame.display.quit()
         pygame.display.init()
 
@@ -330,8 +335,13 @@ class GameInstance:
 
         def reset_mines():
             # Resets mine field mines AND restarts game loop
-            mine_field.reset()
+            mine_field.reset(self.game_settings['mine_count'])
+            game_grid.flag_redraw()
             self.exit_screen("GAME")
+
+        def commit_mines():
+            mine_field.commit_mines()
+            game_grid.flag_redraw()
 
         # Create buttons
         menu_buttons = [
@@ -340,23 +350,32 @@ class GameInstance:
                 pos_x=(screen_width / 2) - (face_size / 2),         # Center in menu bar
                 pos_y=(menu_bar_height / 2) - (face_size / 2),      # Center in menu bar
                 width=face_size, height=face_size,
-                leftclick=reset_mines, rightclick=mine_field.commit_mines,
+                leftclick=reset_mines, rightclick=commit_mines,
                 object_link=mine_field,
                 sprite_list=self.face_sprites
             )
         ]
-        game_buttons = [
-            MineSweeperSquare(
-                object_link=mine_field.get_square(x, y),
-                sprite_list=self.grid_sprites,
-                pos_x=x * box_size,
-                pos_y=menu_bar_height + y * box_size,
-                width=box_size,
-                height=box_size,
-            )
-            for x in range(mine_field.size[0])
-            for y in range(mine_field.size[1])
-        ]
+        # game_buttons = [
+        #     MineSweeperSquare(
+        #         object_link=mine_field,
+        #         coord_link=(x, y),
+        #         sprite_list=self.grid_sprites,
+        #         pos_x=x * box_size,
+        #         pos_y=menu_bar_height + y * box_size,
+        #         width=box_size,
+        #         height=box_size,
+        #     )
+        #     for x in range(mine_field.size[0])
+        #     for y in range(mine_field.size[1])
+        # ]
+
+        game_grid = MineSweeperGrid(
+            pos_x=0,
+            pos_y=menu_bar_height,
+            tile_size=box_size,
+            sprite_list=self.grid_sprites,
+            object_link=mine_field
+        )
 
         # Use the blank digit sprite as a template for digit sprite sizes
         d_height = self.digit_sprites['blank'].get_height()
@@ -387,6 +406,22 @@ class GameInstance:
             (0, 0)
         )
 
+        time_data = pandas.DataFrame({
+            'tick_number': [],
+            'input_time': [],
+            'process_time': [],
+            'drawing_time': [],
+            'flipping_time': []
+        })
+
+        times = {
+            'tick_number': 0,
+            'input_time': 0,
+            'process_time': 0,
+            'drawing_time': 0,
+            'flipping_time': 0
+        }
+
         self.screen_control['RESTART'] = True
         while self.screen_control['RESTART']:
 
@@ -397,8 +432,8 @@ class GameInstance:
             while mine_field.game_state() == 0 and self.screen_control['GAME']:
                 self.clock.tick(60)
 
+                st = time.time()
                 ### RESOLVE USER INPUT ###
-
                 for ev in pygame.event.get():
                     if ev.type == pygame.QUIT:
                         pygame.quit()
@@ -410,36 +445,58 @@ class GameInstance:
                             reset_mines()
 
                 # Store mouse inputs for each button
-                for allb in menu_buttons + game_buttons:
+                for allb in menu_buttons: # + game_buttons:
                     allb.store_inputs(pygame.mouse.get_pos(), pygame.mouse.get_pressed(3))
+                game_grid.store_inputs(pygame.mouse.get_pos(), pygame.mouse.get_pressed(3))
+
+                times['input_time'] = time.time() - st
+                st = time.time()
 
                 ### UPDATE GAME VARIABLES ###
                 # Run click logic (where applicable) to buttons
-                for allb in menu_buttons + game_buttons:
+                for allb in menu_buttons: # + game_buttons:
                     allb.button_logic()
+                game_grid.button_logic()
+
+                times['process_time'] = time.time() - st
+                st = time.time()
 
                 ### UPDATE DISPLAY ###
                 # Re-draw base display if dead
                 if self.screen_is_dead(game_screen):
                     game_screen = pygame.display.set_mode([screen_width, screen_height])
                     game_screen.fill((192, 192, 192))
-                    pygame.display.set_caption("Minesweeper")
                     game_screen.blit(pygame.transform.scale(
                         self.menu_elements['MENU_BAR'], (screen_width, menu_bar_height)),
                         (0, 0)
                     )
+                    pygame.display.set_caption("Minesweeper")
 
-                for allb in menu_buttons + game_buttons:
+                for allb in menu_buttons: # + game_buttons:
                     allb.draw(game_screen)
+                game_grid.draw(game_screen)
 
                 # Since there are only two digit-counters, I choose to
                 # manually update them each loop (as opposed to looping through a list of them)
                 mine_counter.draw(game_screen, len(mine_field.mine_squares) - len(mine_field.flag_squares))
                 time_counter.draw(game_screen, int(tick_count/60))
+
+                times['drawing_time'] = time.time() - st
+                st = time.time()
+
                 pygame.display.flip()
+                times['flipping_time'] = time.time() - st
 
                 tick_count += 1
+                times['tick_number'] = tick_count
+                time_data = time_data.append(times, ignore_index=True)
 
+            def sum_time(df):
+                to_return = df.copy()
+                to_return['total_time'] = to_return['input_time'] + to_return['process_time'] + to_return['drawing_time'] + to_return['flipping_time']
+                return to_return
+
+            print(time_data.pipe(sum_time).mean(axis=0)[['input_time','process_time','drawing_time', 'flipping_time', 'total_time']].head(5))
 
             # Once game loop ends, do GAMEOVER loop
             while self.screen_control['GAME']:
