@@ -238,13 +238,13 @@ class GameInstance:
 
         color_scheme = matplotlib.cm.get_cmap("Spectral")
         def get_colormap(scale_factor):
-            # Take a matplotlib colormap and
+            # Take a matplotlib colormap and convert it to
+            # a colormap reference (dictionary of BASE vs MOUSEOVER rgb tuples) for use
+            # in my buttons
             raw_cmap = color_scheme(scale_factor)
             base_color = tuple([col * 255 for col in raw_cmap[0:3]])
             mouseover_color = tuple([0.8 * col for col in base_color])
             return {'BASE': base_color, 'MOUSEOVER': mouseover_color}
-
-
 
         col_color = {
             'MINES': get_colormap(0.2),
@@ -253,12 +253,14 @@ class GameInstance:
             'SCREEN': get_colormap(0.8)
         }
 
+        # y-coordinates for element positioning
         row_y = {
             'LABEL': 0,
             'ADJUST': button_height/2,
             'NUM': 2 * screen_height/4,
             'CONFIRM': 3 * screen_height/4
         }
+        # x-coordinates for element positioning
         column_x = {
             'MINES': 0,
             'NROW': screen_width/5,
@@ -266,8 +268,7 @@ class GameInstance:
             'SCREEN': 3 * screen_width/5,
             'FULLSCREEN': 4 * screen_width/5
         }
-
-
+        # standard time-sheet for button hold-down (on adjustment buttons)
         adjustment_timer = [
             (0, 10),
             (60, 5),
@@ -376,6 +377,8 @@ class GameInstance:
 
         config_screen = pygame.display.set_mode([screen_width, screen_height])
         pygame.display.set_caption("Game Settings")
+
+        # Menu screen loop
         while self.screen_control['SETTINGS']:
             self.clock.tick(60)
 
