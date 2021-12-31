@@ -27,27 +27,27 @@ class GameInstance:
 
         # Directly user-controlled settings
         self.settings = {
-            'mine_count': 15,        # Minimum 1    Maximum: (rows * columns) / 2
-            'row_count': 10,         # Minimum 1    Maximum: 100
-            'column_count': 10,      # Minimum 4    Maximum: 100
-            'fullscreen': True,
-            'screen_size': 500
+            'mine_count': 15,         # Minimum 1    Maximum: (rows * columns) / 2
+            'row_count': 10,          # Minimum 1    Maximum: 100
+            'column_count': 10,       # Minimum 4    Maximum: 100
+            'fullscreen': False,      # Controls if game will open in fullscreen mode
+            'screen_size': 500        # Maximum dimension (width or height) of non-fullscreen screen,
         }
 
         # Display settings calculated based on existing settings
         self.display_settings = {
-            'menu_bar_height': 50,
-            'face_size': 32,
-            'screen_width': 500,
-            'screen_height': 500,
-            'box_size': 32.0
+            'menu_bar_height': 50,   # Height of the bit at the top with the counters & the face
+            'face_size': 32.0,       # Size of the face button
+            'screen_width': 500,     # Current calculated width for screen
+            'screen_height': 500,    # Current calculated height for screen
+            'box_size': 32.0         # Current calculated size of the minesweeper squares
         }
 
-        self.menu_elements = {}     # images for drawing menu elements
-        self.face_sprites = {}      # sprites of the minesweeper dude's faces
-        self.grid_sprites = {}      # sprite of grid tile icons
-        self.digit_sprites = {}     # sprites of digital-clock style digits
-        self.load_images()          # populate sprite_lists described above
+        self.menu_elements = {}      # images for drawing menu elements
+        self.face_sprites = {}       # sprites of the minesweeper dude's faces
+        self.grid_sprites = {}       # sprite of grid tile icons
+        self.digit_sprites = {}      # sprites of digital-clock style digits
+        self.load_images()           # populate sprite_lists described above
 
         self.screen_resolution = (pygame.display.Info().current_w, pygame.display.Info().current_h)
 
@@ -94,7 +94,6 @@ class GameInstance:
         # call setting adjustment to trigger auto-correction of settings
         # (to minimums & maximums)
         self.adjust_settings('screen_size', 0)
-
 
     def adjust_settings(self, setting_type, adjust_amount):
         # Change game settings (rows, columns, number of mines)
@@ -236,7 +235,7 @@ class GameInstance:
         button_width = screen_width/5
         button_height = screen_height/4
 
-        color_scheme = matplotlib.cm.get_cmap("Spectral")
+        color_scheme = matplotlib.cm.get_cmap("Pastel2")
         def get_colormap(scale_factor):
             # Take a matplotlib colormap and convert it to
             # a colormap reference (dictionary of BASE vs MOUSEOVER rgb tuples) for use
@@ -408,11 +407,15 @@ class GameInstance:
         pygame.display.init()
 
     def set_display_settings(self):
-        # Static values
-        menu_bar_height = 50
+        """
 
-        self.display_settings['menu_bar_height'] = 50
-        self.display_settings['face_size'] = 35
+        :rtype: pygame.Surface
+        """
+        # Static values
+        menu_bar_height = 75
+
+        self.display_settings['menu_bar_height'] = menu_bar_height
+        self.display_settings['face_size'] = (menu_bar_height/2)
 
         if self.settings['fullscreen']:
             screen_width, screen_height = self.screen_resolution
@@ -431,11 +434,18 @@ class GameInstance:
         self.display_settings['screen_width'] = screen_width
         self.display_settings['screen_height'] = screen_height
         self.display_settings['box_size'] = box_size
-        return pygame.display.set_mode([screen_width, screen_height + menu_bar_height])
+
+        if self.settings['fullscreen']:
+            # Though display_settings aren't used for setting up screen,
+            # if fullscreen is selected, we'll still need those attributes
+            # to determine display element sizes
+            return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            return pygame.display.set_mode([screen_width, screen_height + menu_bar_height])
 
     def run_game(self):
         # Potential new screen size for game: close and reopen
-        # (Things appear off-center sometimes if we don't do this, idk)
+        # (Things appear off-center sometimes if I don't do this, idk)
         pygame.display.quit()
         pygame.display.init()
 
@@ -466,8 +476,9 @@ class GameInstance:
         menu_buttons = [
             # FACE BUTTON
             MineSweeperFace(
-                pos_x=(self.display_settings['screen_width'] / 2) - (self.display_settings['face_size'] / 2),                                    # Center in menu bar
-                pos_y=(self.display_settings['menu_bar_height'] / 2) - (self.display_settings['face_size'] / 2),        # Center in menu bar
+                # Center in menu bar
+                pos_x=(self.display_settings['screen_width'] / 2) - (self.display_settings['face_size'] / 2),
+                pos_y=(self.display_settings['menu_bar_height'] / 2) - (self.display_settings['face_size'] / 2),
                 width=self.display_settings['face_size'], height=self.display_settings['face_size'],
                 leftclick=reset_mines, rightclick=commit_mines,
                 object_link=mine_field,
@@ -475,7 +486,7 @@ class GameInstance:
             )
         ]
         game_grid = MineSweeperGrid(
-            pos_x=(self.display_settings['screen_width']/2) - (mine_field.size[0] * self.display_settings['box_size'] / 2),
+            pos_x=(self.display_settings['screen_width']/2) - (mine_field.size[0] * self.display_settings['box_size']/2),
             pos_y=self.display_settings['menu_bar_height'],
             tile_size=self.display_settings['box_size'],
             sprite_list=self.grid_sprites,
@@ -483,25 +494,27 @@ class GameInstance:
         )
 
         # Use the blank digit sprite as a template for digit sprite sizes
-        d_height = self.digit_sprites['blank'].get_height()
-        d_width = self.digit_sprites['blank'].get_width()
+        digit_size_ratio = self.digit_sprites['blank'].get_width()/self.digit_sprites['blank'].get_height()
+        d_height = self.display_settings['face_size'] * 0.9
+        d_width = digit_size_ratio * d_height
 
         # Create digit-style counters
         mine_counter = DigitDisplay(
                 sprite_list=self.digit_sprites,
                 digit_height=d_height, digit_width=d_width,
                 num_digits=3,
-                pos_x=self.display_settings['screen_width'] - (15 + (3 * d_width)),
+                pos_x=(39/40) * self.display_settings['screen_width'] - (3 * d_width),
                 pos_y=(1/2) * self.display_settings['menu_bar_height'] - (1/2) * d_height
             )
         time_counter = DigitDisplay(
                 sprite_list=self.digit_sprites,
                 digit_height=d_height, digit_width=d_width,
                 num_digits=3,
-                pos_x=15,
+                pos_x=(1/40) * self.display_settings['screen_width'],
                 pos_y=(1/2) * self.display_settings['menu_bar_height'] - (1/2) * d_height
         )
 
+        # Fill background with grey and draw menu bar texture at top
         game_screen.fill((192, 192, 192))
         game_screen.blit(pygame.transform.scale(
             self.menu_elements['MENU_BAR'], (self.display_settings['screen_width'], self.display_settings['menu_bar_height'])),

@@ -550,15 +550,15 @@ class DigitDisplay:
         digits_drawn = 0
         for nb in range(num_blanks):
             to_screen.blit(
-                pygame.transform.scale(self.sprite_list['blank'], (self.digit_width, self.digit_height)),
+                pygame.transform.scale(self.sprite_list['blank'], (1.05*self.digit_width, self.digit_height)),
                 (self.pos[0] + self.digit_width * digits_drawn, self.pos[1])
             )
             digits_drawn += 1
 
         for sprite_key in digits_to_draw:
             to_screen.blit(
-                pygame.transform.scale(self.sprite_list[sprite_key], (self.digit_width, self.digit_height)),
-                (self.pos[0] + self.digit_width * digits_drawn, self.pos[1])
+                pygame.transform.scale(self.sprite_list[sprite_key], (1.05*self.digit_width, self.digit_height)),
+                ((self.pos[0] + self.digit_width * digits_drawn), self.pos[1])
             )
             digits_drawn += 1
 
