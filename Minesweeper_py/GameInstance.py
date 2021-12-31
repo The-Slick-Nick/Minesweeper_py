@@ -16,6 +16,7 @@ class GameInstance:
         self.show_game = False
 
         self.clock = pygame.time.Clock()
+        self.color_scheme = matplotlib.cm.get_cmap("summer")
 
         self.screen_control = {
             'STARTMENU': False,
@@ -100,6 +101,9 @@ class GameInstance:
         # Then auto-correct those settings based on set minimums/maximums
         self.settings[setting_type] += adjust_amount
 
+        """ SCREEN SIZE:
+        200 <= screen_size <= smallest screen dimension
+        """
         self.settings['screen_size'] = max(
             200,
             min(
@@ -108,7 +112,15 @@ class GameInstance:
             )
         )
 
-        min_rows = 1
+
+        """ ROW COUNT
+        Find the maximum number of rows based on a minimum square size of 10
+        That is, find the largest row count that would still yield a grid tile size >= 10
+        
+        2 <= row_count <= (screen dimension/10)
+        """
+
+        min_rows = 2
         if self.settings['fullscreen']:
             max_rows = int(self.screen_resolution[1]/10)
             max_columns = int(self.screen_resolution[0]/10)
@@ -116,28 +128,63 @@ class GameInstance:
             max_rows = int(self.settings['screen_size']/10)
             max_columns = max_rows
 
+        # 2 <= row_count < max_rows
         self.settings['row_count'] = min(
             max(min_rows, self.settings['row_count']),
             max_rows
         )
 
-        # Work around minimum screen width of 120:
-        # Based on projected square size, we must have enough columns (at that size) to get size 120 or greater
-        # num_columns * square_size >= 120
-        min_columns = max(1, ceil(120 * (self.settings['row_count'] / self.settings['screen_size'])))
+        """ COLUMN COUNTS
+        Find the minimum number of columns as we did with rows above
+        (Find the largest column count that still yields a grid tile size >= 10)
+        
+        Then, find the minimum column count, which is the number of columns that, based on a projected
+        grid tile size, gives enough space to draw menu and display elements (Digit counters, face button)
+        
+        In total, we will find:
+        2 <= (8 * face_width * (row_count/screen_dimension) <= column_count <= (screen dimension/10)
+        """
 
+        # Account for: 6 digits, 1 face, and 1 face-width's worth of cushion
+        # Total 8 face widths
+        min_screen_width = 8 * self.display_settings['face_size']
 
-        # min_columns < column_count < max_columns
+        # Project square size based on row count
+        # (For finding a lower column # bound, it is safe to assume num rows > num columns here)
+        if self.settings['fullscreen']:
+            proj_square_size = self.settings['row_count'] / self.screen_resolution[0]
+        else:
+            proj_square_size = self.settings['row_count'] / self.settings['screen_size']
+
+        # Based on projected square size, we must have enough of those squares to fill minimum screen width
+        # num_columns * square_size >= min_screen
+        min_columns = max(2, int(min_screen_width * proj_square_size))
+
+        # 2 <= min_columns < column_count < max_columns
         self.settings['column_count'] = min(
             max(min_columns, self.settings['column_count']),
             max_columns
         )
 
-        # 1 < num_mines < grid_size/2
+        """MINE COUNT
+        The number of mines to populate must leave at least half of
+        the squares in the grid safe, but there must be at least one mine
+        Therefore:
+        1 <= num_mines < grid_size/2
+        """
         self.settings['mine_count'] = min(
             max(1, self.settings['mine_count']),
             int((self.settings['row_count'] * self.settings['column_count']) / 2)
         )
+
+    def get_colormap(self, scale_factor):
+        # Given a matplotlib colormap (self.color_scheme), use a scale_factor,
+        # then convert it to a colormap in the style used by my buttons
+        # {'BASE': (R, G, B), 'MOUSEOVER': (R, G, B)}
+        raw_cmap = self.color_scheme(scale_factor)
+        base_color = tuple([col * 255 for col in raw_cmap[0:3]])
+        mouseover_color = tuple([0.8 * col for col in base_color])
+        return {'BASE': base_color, 'MOUSEOVER': mouseover_color}
 
     @staticmethod
     def screen_is_dead(test_screen):
@@ -163,7 +210,7 @@ class GameInstance:
                 pos_y=0,
                 height=screen_height/3,
                 width=screen_width,
-                colormap={'BASE': (10, 150, 150), 'MOUSEOVER': (5, 100, 100)},
+                colormap=self.get_colormap(0.25),
                 box_text="START",
                 leftclick=self.run_game
             ),
@@ -172,7 +219,8 @@ class GameInstance:
                 pos_x=0, pos_y=screen_height/3,
                 height=screen_height/3,
                 width=screen_width,
-                box_text="CONFIG",
+                colormap=self.get_colormap(0.5),
+                box_text="SETTINGS",
                 leftclick=self.run_settings
             ),
             # EXIT BUTTON: Exits Main Menu
@@ -181,7 +229,7 @@ class GameInstance:
                 pos_y=2 * screen_height/3,
                 height=screen_height/3,
                 width=screen_width,
-                colormap={'BASE': (200, 0, 0), 'MOUSEOVER': (100, 0, 0)},
+                colormap=self.get_colormap(0.75),
                 box_text='EXIT',
                 leftclick=lambda: self.exit_screen("STARTMENU")
             )
@@ -235,21 +283,11 @@ class GameInstance:
         button_width = screen_width/5
         button_height = screen_height/4
 
-        color_scheme = matplotlib.cm.get_cmap("Pastel2")
-        def get_colormap(scale_factor):
-            # Take a matplotlib colormap and convert it to
-            # a colormap reference (dictionary of BASE vs MOUSEOVER rgb tuples) for use
-            # in my buttons
-            raw_cmap = color_scheme(scale_factor)
-            base_color = tuple([col * 255 for col in raw_cmap[0:3]])
-            mouseover_color = tuple([0.8 * col for col in base_color])
-            return {'BASE': base_color, 'MOUSEOVER': mouseover_color}
-
         col_color = {
-            'MINES': get_colormap(0.2),
-            'NROW': get_colormap(0.4),
-            'NCOL': get_colormap(0.6),
-            'SCREEN': get_colormap(0.8)
+            'MINES': self.get_colormap(0),
+            'NROW': self.get_colormap(0.2),
+            'NCOL': self.get_colormap(0.4),
+            'SCREEN': self.get_colormap(0.6)
         }
 
         # y-coordinates for element positioning
@@ -369,7 +407,7 @@ class GameInstance:
             Button(
                 pos_y=row_y['CONFIRM'], pos_x=0,
                 width=screen_width, height=button_height,
-                colormap=get_colormap(1),
+                colormap=self.get_colormap(0.8),
                 box_text='CONFIRM', leftclick=lambda: self.exit_screen('SETTINGS')
             )
         ]
@@ -495,7 +533,7 @@ class GameInstance:
 
         # Use the blank digit sprite as a template for digit sprite sizes
         digit_size_ratio = self.digit_sprites['blank'].get_width()/self.digit_sprites['blank'].get_height()
-        d_height = self.display_settings['face_size'] * 0.9
+        d_height = self.display_settings['face_size'] #* 0.9
         d_width = digit_size_ratio * d_height
 
         # Create digit-style counters
