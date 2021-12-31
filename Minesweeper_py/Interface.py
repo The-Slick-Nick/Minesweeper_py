@@ -199,81 +199,148 @@ class MineSweeperFace(ImageInteractable):
         return self.sprite_list[image_key]
 
 
-class MineSweeperSquare(ImageInteractable):
-    # Experimental button type using images instead of rectangles
-    # WIP, will adjust how I use this
-    def __init__(self,
-                 object_link=None,
-                 **kwds):
-        # Pass default interactable args up
-        super().__init__(**kwds)
+class MineSweeperGrid:
+    # Big daddy grid manager. Controls which of the MineSweeperSquares get drawn and which don't
+    def __init__(self, pos_x, pos_y,
+                 tile_size, sprite_list,
+                 object_link: MineField):
 
-        self.field_tile = object_link       # Linked object to call game logic on
+        self.sprite_list = sprite_list
+        self.mine_field = object_link
+        self.tile_size = tile_size
+        self.pos = (pos_x, pos_y)
+        self.do_redraw = True  # Flag indicating if entire field should be redrawn
+        self.mouse_pos = (-1, -1)
+        self.squares = {
+            'NEW': None,
+            'OLD': None
+        }
+        self.pressed = {
+            'NEW': (False, False, False),
+            'OLD': (False, False, False)
+        }
 
-    def button_logic(self):
-        # Simpler button logic for grids: no hold-down logic
-        # Right click: apply immediately (only on new clicks)
-        # Left click: apply on let-go
-        if self.mouse_collision():
-            if not self.new_pressed[0] and self.old_pressed[0]:
-                # Logic only on button release
-                self.leftclick()
-            elif self.new_pressed[2] and not self.old_pressed[2]:
-                self.rightclick()
+    def flag_redraw(self):
+        self.do_redraw = True
 
-    def get_image(self):
-        # Determine tile category (based on object flags)
-        # and reference the given image
-        assert isinstance(self.field_tile, FieldSquare)
-        if self.field_tile.mine_removed:
-            # REPLACE WITH "mineRemoved" ONCE THAT IMAGE IS UPLOADED
+    def draw(self, to_screen):
+        if self.do_redraw:
+            # Loop through every tile and redraw
+            for tile_list in self.mine_field.field:
+                for tile_to_draw in tile_list:
+                    self.draw_tile(to_screen, tile_to_draw)
+            self.do_redraw = False
+        else:
+            # Redraw only the currently & recently interacted-with tiles
+            for tile_items in self.squares.items():
+                tile_to_draw = tile_items[1]
+                if tile_to_draw is not None:
+                    self.draw_tile(to_screen, tile_to_draw)
+
+    def draw_tile(self, to_screen, field_square):
+        assert isinstance(field_square, FieldSquare)
+        grid_x, grid_y = field_square.pos # Relative x,y position in grid of buttons
+        pos_x, pos_y = self.pos # x,y position of Grid structure on main screen
+
+        image_to_draw = self.get_image(field_square)
+        draw_x = pos_x + grid_x * self.tile_size
+        draw_y = pos_y + grid_y * self.tile_size
+
+        to_screen.blit(
+            pygame.transform.scale(image_to_draw,(self.tile_size, self.tile_size)),
+            (draw_x, draw_y)
+        )
+
+    def get_image(self, field_square):
+        if field_square.mine_removed:
             image_key = "mineRemoved"
-        elif self.field_tile.is_revealed:
-            if self.field_tile.has_mine:
+        elif field_square.is_revealed:
+            if field_square.has_mine:
                 # All below are only visible on game over (revealed mine)
-                if self.field_tile.source_explosion:
+                if field_square.source_explosion:
                     image_key = "mineClicked"
                 else:
                     image_key = "mine"
             else:
-                if self.field_tile.has_flag:
+                # revealed, no mine
+                if field_square.has_flag:
                     # This should also only be visible on a gameover
                     image_key = 'mineFalse'
-                elif self.field_tile.neighboring_mines == 0:
+                elif field_square.neighboring_mines == 0:
                     image_key = "empty"
                 else:
                     # No flag & >0 neighbors
-                    image_key = "grid{}".format(self.field_tile.neighboring_mines)
+                    image_key = "grid{}".format(field_square.neighboring_mines)
         else:
             # not revealed
-            if self.field_tile.has_flag:
+            if field_square.has_flag:
                 image_key = "flag"
-            elif self.mouse_collision() and self.new_pressed[0]:
-                # Have to include mouse_collision check if specific button pressed
+            elif self.pressed['NEW'][0] and field_square.pos == self.map_coords(self.mouse_pos):
+                # Have to include mouse_collision to check if a specific button is pressed
                 image_key = "empty"
             else:
                 image_key = "grid"
 
         return self.sprite_list[image_key]
 
+    def store_inputs(self, mouse_pos=(-1, -1), mouse_buttons=(False, False, False)):
+        self.mouse_pos = mouse_pos
+        tile_x, tile_y = self.map_coords(mouse_pos)
+
+        self.squares['OLD'] = self.squares['NEW']
+        self.squares['NEW'] = self.mine_field.get_square(tile_x, tile_y)
+
+        self.pressed['OLD'] = self.pressed['NEW']
+        self.pressed['NEW'] = mouse_buttons
+
+    def map_coords(self, mouse_pos):
+        mouse_x, mouse_y = mouse_pos
+        pos_x, pos_y = self.pos
+
+        rel_x = mouse_x - pos_x
+        rel_y = mouse_y - pos_y
+
+        tile_x = math.floor(rel_x / self.tile_size)
+        tile_y = math.floor(rel_y / self.tile_size)
+        if (
+                0 <= tile_x < self.mine_field.size[0]
+                and 0 <= tile_y < self.mine_field.size[1]
+        ):
+                return (tile_x, tile_y)
+        else:
+            return -1, -1
+
+    def button_logic(self):
+        # Leftmouse: pressed and let go
+        if not self.pressed['NEW'][0] and self.pressed['OLD'][0]:
+            self.leftclick()
+        # Rightmouse: click
+        elif self.pressed['NEW'][2] and not self.pressed['OLD'][2]:
+            self.rightclick()
+
     def leftclick(self):
+        # Executes dig on tile, if it exists in this grid
         try:
-            self.field_tile.dig()
-        except:
-            print("error: stop")
+            coord_x, coord_y = self.map_coords(self.mouse_pos)
+            self.mine_field.dig(coord_x, coord_y)
+            self.flag_redraw()
+        except TypeError:
+            pass
 
     def rightclick(self):
+        # Executes flag on tile, if it exists in this grid
         try:
-            self.field_tile.toggle_flag()
-        except:
-            print("error: stop")
+            coord_x, coord_y = self.map_coords(self.mouse_pos)
+            self.mine_field.toggle_flag(coord_x, coord_y)
+        except TypeError:
+            pass
 
 
 class Button(Interactable):
     # A type of interactable drawn using
     # pygame rectangles & text surfaces
     def __init__(self,
-                 colormap=None,
+                 colormap=None, do_mouseover_color=True,
                  box_text="",
                  text_font='Arial',
                  font_size=10,
@@ -284,9 +351,9 @@ class Button(Interactable):
 
         self.rect = pygame.rect.Rect(self.pos_x, self.pos_y, self.width, self.height)
 
-        self.display_color = None               # Stores text currently drawn on button
-        self.display_text = None                # Stores text currently drawn on button
-
+        self.display_color = None                       # Stores text currently drawn on button
+        self.display_text = None                        # Stores text currently drawn on button
+        self.do_mouseover_color = do_mouseover_color    # Flag for shifting color on mouseover
 
         # DEFAULTS:
         # Values to use for base-class Buttons
@@ -334,7 +401,7 @@ class Button(Interactable):
     def get_color(self):
         # Method that retrieves the color a button should be at time of call
         if self.default_colorfunc is None:
-            if self.rect.collidepoint(self.mouse_pos):
+            if self.rect.collidepoint(self.mouse_pos) and self.do_mouseover_color:
                 return self.default_shape_color['MOUSEOVER']
             else:
                 return self.default_shape_color['BASE']
@@ -377,7 +444,10 @@ class Button(Interactable):
         # - Redrawing rectangle covers up old text, then we have to
         #   redraw text on top
         if do_draw_rect or do_change_text:
-            pygame.draw.rect(to_screen, color_to_draw, self.rect)
+            try:
+                pygame.draw.rect(to_screen, color_to_draw, self.rect)
+            except:
+                print("HERE")
             to_screen.blit(self.text_surface, self.text_rect)
             self.display_color = color_to_draw
             self.display_text = text_to_draw
@@ -391,10 +461,13 @@ class ObjectButton(Button):
         super().__init__(**kwds)
 
     def get_color(self):
+        # "Try"-ing to return that result ends up returning "None" anyway
+        # so I save the result in to_return, then use super() if that fails
         try:
-            return self.object.get_color()
+            to_return = self.object.get_color()
         except AttributeError:
-            return self.default_shape_color['BASE']
+            to_return = super().get_color()
+        return to_return
 
     def get_text(self):
         try:
@@ -411,7 +484,25 @@ class GameSettingButton(ObjectButton):
         super().__init__(**kwds)
 
     def get_text(self):
-        return str(self.object.game_settings[self.setting_type])
+        return str(self.object.settings[self.setting_type])
+
+
+class FullScreenButton(ObjectButton):
+    def get_text(self):
+        if self.object.settings['fullscreen']:
+            return "FULLSCREEN"
+        else:
+            return "NO FULLSCREEN"
+
+    def get_color(self):
+
+        if self.object.settings['fullscreen']:
+            to_return = (0, 255, 0)
+        else:
+            to_return = (255, 0, 0)
+        if self.rect.collidepoint(self.mouse_pos) and self.do_mouseover_color:
+                to_return = tuple([col * 0.8 for col in to_return])
+        return to_return
 
 
 ### NON-INTERACTABLES ###
@@ -459,15 +550,15 @@ class DigitDisplay:
         digits_drawn = 0
         for nb in range(num_blanks):
             to_screen.blit(
-                pygame.transform.scale(self.sprite_list['blank'], (self.digit_width, self.digit_height)),
+                pygame.transform.scale(self.sprite_list['blank'], (1.05*self.digit_width, self.digit_height)),
                 (self.pos[0] + self.digit_width * digits_drawn, self.pos[1])
             )
             digits_drawn += 1
 
         for sprite_key in digits_to_draw:
             to_screen.blit(
-                pygame.transform.scale(self.sprite_list[sprite_key], (self.digit_width, self.digit_height)),
-                (self.pos[0] + self.digit_width * digits_drawn, self.pos[1])
+                pygame.transform.scale(self.sprite_list[sprite_key], (1.05*self.digit_width, self.digit_height)),
+                ((self.pos[0] + self.digit_width * digits_drawn), self.pos[1])
             )
             digits_drawn += 1
 
