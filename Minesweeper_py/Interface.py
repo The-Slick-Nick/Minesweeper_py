@@ -335,11 +335,12 @@ class MineSweeperGrid:
         except TypeError:
             pass
 
+
 class Button(Interactable):
     # A type of interactable drawn using
     # pygame rectangles & text surfaces
     def __init__(self,
-                 colormap=None,
+                 colormap=None, do_mouseover_color=True,
                  box_text="",
                  text_font='Arial',
                  font_size=10,
@@ -350,9 +351,9 @@ class Button(Interactable):
 
         self.rect = pygame.rect.Rect(self.pos_x, self.pos_y, self.width, self.height)
 
-        self.display_color = None               # Stores text currently drawn on button
-        self.display_text = None                # Stores text currently drawn on button
-
+        self.display_color = None                       # Stores text currently drawn on button
+        self.display_text = None                        # Stores text currently drawn on button
+        self.do_mouseover_color = do_mouseover_color    # Flag for shifting color on mouseover
 
         # DEFAULTS:
         # Values to use for base-class Buttons
@@ -400,7 +401,7 @@ class Button(Interactable):
     def get_color(self):
         # Method that retrieves the color a button should be at time of call
         if self.default_colorfunc is None:
-            if self.rect.collidepoint(self.mouse_pos):
+            if self.rect.collidepoint(self.mouse_pos) and self.do_mouseover_color:
                 return self.default_shape_color['MOUSEOVER']
             else:
                 return self.default_shape_color['BASE']
@@ -443,7 +444,10 @@ class Button(Interactable):
         # - Redrawing rectangle covers up old text, then we have to
         #   redraw text on top
         if do_draw_rect or do_change_text:
-            pygame.draw.rect(to_screen, color_to_draw, self.rect)
+            try:
+                pygame.draw.rect(to_screen, color_to_draw, self.rect)
+            except:
+                print("HERE")
             to_screen.blit(self.text_surface, self.text_rect)
             self.display_color = color_to_draw
             self.display_text = text_to_draw
@@ -457,10 +461,13 @@ class ObjectButton(Button):
         super().__init__(**kwds)
 
     def get_color(self):
+        # "Try"-ing to return that result ends up returning "None" anyway
+        # so I save the result in to_return, then use super() if that fails
         try:
-            return self.object.get_color()
+            to_return = self.object.get_color()
         except AttributeError:
-            return self.default_shape_color['BASE']
+            to_return = super().get_color()
+        return to_return
 
     def get_text(self):
         try:
@@ -477,7 +484,25 @@ class GameSettingButton(ObjectButton):
         super().__init__(**kwds)
 
     def get_text(self):
-        return str(self.object.game_settings[self.setting_type])
+        return str(self.object.settings[self.setting_type])
+
+
+class FullScreenButton(ObjectButton):
+    def get_text(self):
+        if self.object.settings['fullscreen']:
+            return "FULLSCREEN"
+        else:
+            return "NO FULLSCREEN"
+
+    def get_color(self):
+
+        if self.object.settings['fullscreen']:
+            to_return = (0, 255, 0)
+        else:
+            to_return = (255, 0, 0)
+        if self.rect.collidepoint(self.mouse_pos) and self.do_mouseover_color:
+                to_return = tuple([col * 0.8 for col in to_return])
+        return to_return
 
 
 ### NON-INTERACTABLES ###

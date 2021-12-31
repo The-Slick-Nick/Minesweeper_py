@@ -136,6 +136,11 @@ class MineField:
                         # We only need to remove flag (& flagged tile from flag list) if committing
                         self.toggle_flag(by_square=square)
 
+                    # Main philosophy here: anything dealt with (and thus non-interactable)
+                    # should be considered "Revealed"
+                    square.is_revealed = True
+                    self.num_revealed += 1
+
                 self.mine_squares.remove(square.pos)
                 for neighbor in self.all_neighbors(by_square=square):
                     assert isinstance(neighbor, FieldSquare)
@@ -184,7 +189,6 @@ class MineField:
                         neighbor.dig()
                         self.num_revealed += 1
                         to_consider.add(neighbor)
-        print("blank spreading time: {}".format(time.time() - st))
 
     def toggle_flag(self, x_pos=-1, y_pos=-1, by_square=None):
         if by_square is not None:
@@ -206,7 +210,7 @@ class MineField:
         #    1  Game won
         if self.exploded:
             return -1
-        elif self.num_revealed + self.num_committed_mines >= self.num_safe_tiles():
+        elif self.num_revealed >= self.num_safe_tiles():
             # If num tiles revealed >= number of safe tiles
             return 1
         else:
