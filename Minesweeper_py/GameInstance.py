@@ -238,6 +238,7 @@ class GameInstance:
 
         color_scheme = matplotlib.cm.get_cmap("Spectral")
         def get_colormap(scale_factor):
+            # Take a matplotlib colormap and
             raw_cmap = color_scheme(scale_factor)
             base_color = tuple([col * 255 for col in raw_cmap[0:3]])
             mouseover_color = tuple([0.8 * col for col in base_color])
