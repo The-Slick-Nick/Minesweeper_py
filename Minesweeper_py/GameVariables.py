@@ -53,6 +53,7 @@ class MineField:
             square_to_set = self.get_square(pos_x, pos_y)
             assert isinstance(square_to_set, FieldSquare)
             if square_to_set.is_clickable() and not square_to_set.has_mine:
+                # All conditions for a mine to exit are met: Set the mine and mark return flag True
                 to_return = True
                 self.mine_squares.add((pos_x, pos_y))
                 square_to_set.set_mine()
@@ -158,13 +159,23 @@ class MineField:
             square_to_dig = self.get_square(x_pos, y_pos)
 
         if square_to_dig is not None and square_to_dig.is_clickable():
-            square_to_dig.dig()
-            self.num_revealed += 1
-            if square_to_dig.has_mine:
-                self.exploded = True
-                self.reveal_mines()
+            if square_to_dig.has_mine and self.num_revealed == 0:
+                # FIRST MOVE PROTECTION:
+                # If the first move reveals a mine, move it away and try again
+                print("FIRST MOVE PROTECTION")
+                # First populate new mine (keep the old one for now so it isn't re-populated)
+                self.populate_mines(1)
+                # Next remove the existing mine (don't commit it) and re-try the dig
+                self.remove_mine(by_square=square_to_dig, commit=False)
+                self.dig(by_square=square_to_dig)
             else:
-                self.spread_blanks(by_square=square_to_dig)
+                self.num_revealed += 1
+                square_to_dig.dig()
+                if square_to_dig.has_mine:
+                    self.exploded = True
+                    self.reveal_mines()
+                else:
+                    self.spread_blanks(by_square=square_to_dig)
 
     def spread_blanks(self, x_pos=-1, y_pos=-1, by_square=None):
         # Continually reveals neighboring squares so long as the square to consider has 0 neighboring mines
