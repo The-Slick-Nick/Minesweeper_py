@@ -30,6 +30,10 @@ In this screen, adjust settings that will control elements of the game and displ
 
 ![SETTINGS](examples/settingsMenu.png)
 
+* Left-click the [+ -] button to increase the value of a setting
+* Right-click the [+ -] button to decrease the value of a setting
+* Hold either to increase/decrease quickly 
+
 ## Game
 
 ### Controls
