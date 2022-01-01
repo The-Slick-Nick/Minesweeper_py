@@ -15,6 +15,8 @@ pip3 install -r requirements.txt
 * Settings - Opens Settings
 * Exit - Closes window
 
+![START MENU](examples/mainMenu.png)
+
 ## Settings
 In this screen, adjust settings that will control elements of the game and display
 * Mines - Number of mines on the map
@@ -25,6 +27,8 @@ In this screen, adjust settings that will control elements of the game and displ
   * The maximum auto-sized dimension is what is detailed here
   * NOTE: This parameter is ignored when fullscreen is toggled ON
 * Fullscreen - Toggles if the game will open in fullscreen mode
+
+![SETTINGS](examples/settingsMenu.png)
 
 ## Game
 
