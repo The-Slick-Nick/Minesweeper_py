@@ -51,7 +51,7 @@ Digging up a mine blows us up and loses the game, so we will try to avoid that.
 
 ![DUG UP MINE](examples/gameLost.png)
 
-Digging up a number gives us a clue as to how we can: that number indicates how many mines are in tile immediately bordering that one (all cardinal directions + diagonals). 
+Digging up a number gives us a clue as to how we can: that number indicates how many mines are in tiles immediately bordering that one (all cardinal directions + diagonals). 
 
 Note that a blank tile is effectively showing 0. In addition, minesweeper has a neat behavior where digging up a 0 will automatically dig up all other tiles around it, as they are all guaranteed to be safe. This trigger more 0s, and result in a large number of squares being dug up at once.
 
