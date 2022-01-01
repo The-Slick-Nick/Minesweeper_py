@@ -95,7 +95,7 @@ Here's how it works:
 
 ![COMMIT AFTER](examples/commitAfter.png)
 
-Note that this function adds no new information to the player. 
+Note that this function gives no new information to the player. 
 It simply makes the existing game state more visually digestible while removing
 some of the more tedious logical steps.
 
