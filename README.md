@@ -81,7 +81,7 @@ For a unique spin on the gameplay of minesweeper, this project has added a funct
 
 Here's how it works:
 * Flag a tile you are sure is a mine
-* Left click on the face at the top
+* Right click on the face at the top
 * If the flagged tile contains a mine, the mine will be removed from the grid and replaced with a blue square
   * Since the mine is now gone, the numbers indicated in the tiles surrounding will be adjusted to account for this.
   * Since this can result in new blank tiles, this also triggers automatic blank-digging for new blank tiles
